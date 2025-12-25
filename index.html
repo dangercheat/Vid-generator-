@@ -2,103 +2,82 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Secure Download Editor</title>
     <script src="https://cdn.jsdelivr.net/gh/gzuidhof/coi-serviceworker@latest/coi-serviceworker.min.js"></script>
     <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
     <style>
-        body { background: #000; color: #00ffcc; font-family: sans-serif; text-align: center; padding: 20px; }
-        .card { border: 2px solid #00ffcc; border-radius: 15px; padding: 25px; background: #0a0a0a; max-width: 400px; margin: auto; }
-        #count { font-size: 50px; font-weight: bold; margin: 10px 0; }
-        button { width: 100%; padding: 15px; background: #00ffcc; color: #000; border: none; font-weight: bold; border-radius: 10px; cursor: pointer; }
-        .download-btn { display: none; background: #ff0055; color: white; text-decoration: none; padding: 15px; border-radius: 10px; display: none; margin-top: 20px; font-weight: bold; }
-        .status { font-size: 12px; color: #888; margin-top: 10px; }
+        body { background: #050505; color: #fff; font-family: 'Arial', sans-serif; text-align: center; padding: 20px; }
+        .edit-box { border: 2px solid #ff0055; padding: 25px; border-radius: 20px; background: #000; box-shadow: 0 0 20px #ff0055; max-width: 400px; margin: auto; }
+        #count { font-size: 50px; color: #ff0055; font-weight: 900; margin: 15px 0; }
+        button { width: 100%; padding: 15px; background: #ff0055; color: #fff; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; }
+        .status { color: #888; font-size: 11px; margin-top: 10px; }
+        #dlLink { display: none; margin-top: 20px; color: #00ffcc; text-decoration: none; font-weight: bold; }
     </style>
 </head>
 <body>
 
-<div class="card">
-    <h2>DOWNLOAD_FIX_V5</h2>
-    
+<div class="edit-box">
+    <h2 style="letter-spacing: 2px;">ANIME_EDIT_V2</h2>
     <input type="file" id="v" accept="video/*" style="width:100%; margin-bottom:10px;">
     <input type="file" id="a" accept="video/*,audio/*" style="width:100%; margin-bottom:10px;">
-
+    
     <div id="count">0</div>
-    <div id="status" class="status">Waiting for files...</div>
-
-    <button id="startBtn">START EDIT</button>
-
-    <a id="downloadBtn" class="download-btn">DOWNLOAD MP4</a>
+    <div id="status" class="status">System Ready</div>
+    
+    <button id="start">RENDER FULL EDIT</button>
+    <a id="dlLink" href="#">⬇️ DOWNLOAD EDITED MP4 ⬇️</a>
 </div>
 
 <script>
     const { createFFmpeg, fetchFile } = FFmpeg;
     const ffmpeg = createFFmpeg({ log: true });
-    let wakeLock = null;
-
-    async function stayAwake() {
-        if ('wakeLock' in navigator) {
-            try { wakeLock = await navigator.wakeLock.request('screen'); } catch (e) {}
-        }
-    }
 
     ffmpeg.setLogger(({ message }) => {
         const frameMatch = message.match(/frame=\s*(\d+)/);
         if (frameMatch) document.getElementById('count').innerText = frameMatch[1];
     });
 
-    document.getElementById('startBtn').onclick = async () => {
-        const vFile = document.getElementById('v').files[0];
-        const aFile = document.getElementById('a').files[0];
-        if(!vFile || !aFile) return alert("Select files first!");
-
-        await stayAwake();
-        const btn = document.getElementById('startBtn');
-        const dlBtn = document.getElementById('downloadBtn');
+    document.getElementById('start').onclick = async () => {
+        const btn = document.getElementById('start');
         const status = document.getElementById('status');
-
         btn.disabled = true;
-        dlBtn.style.display = "none"; // Hide old button if re-running
 
         if (!ffmpeg.isLoaded()) {
-            status.innerText = "Loading Engine...";
+            status.innerText = "Igniting Engine...";
             await ffmpeg.load();
         }
 
-        status.innerText = "Processing Video Data...";
-        ffmpeg.FS('writeFile', 'vid.mp4', await fetchFile(vFile));
-        ffmpeg.FS('writeFile', 'aud.mp4', await fetchFile(aFile));
+        status.innerText = "Loading Clips...";
+        ffmpeg.FS('writeFile', 'v.mp4', await fetchFile(document.getElementById('v').files[0]));
+        ffmpeg.FS('writeFile', 'a.mp4', await fetchFile(document.getElementById('a').files[0]));
 
-        status.innerText = "Rendering (DO NOT CLOSE)...";
+        status.innerText = "Applying Hard FX...";
 
-        try {
-            // High-Speed Mobile Friendly Filter
-            await ffmpeg.run(
-                '-i', 'vid.mp4', '-i', 'aud.mp4',
-                '-t', '12',
-                '-filter_complex', "[0:v]scale=480:854,crop=480:854,eq=saturation=1.4[v]",
-                '-map', '[v]', '-map', '1:a',
-                '-c:v', 'libx264', '-preset', 'ultrafast', 'output.mp4'
-            );
+        /** * FX SETTINGS:
+         * 1. scale/crop: Sets 9:16 Vertical.
+         * 2. eq: Boosts saturation (vibrance) and contrast.
+         * 3. zoompan: Adds a slow zoom-in transition.
+         * 4. flicker: The 'geq' filter adds white flashes on specific frames.
+         */
+        const complexFX = "[0:v]scale=-1:1080,crop=608:1080,eq=saturation=1.7:contrast=1.3,zoompan=z='min(zoom+0.0015,1.25)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'[v1];" +
+                          "[v1]geq=lum='if(gt(mod(n,10),7),255,p(X,Y))'[v]";
 
-            // FIXING THE DOWNLOAD ERROR:
-            const data = ffmpeg.FS('readFile', 'output.mp4');
-            const blob = new Blob([data.buffer], { type: 'video/mp4' });
-            const url = URL.createObjectURL(blob);
-            
-            dlBtn.href = url;
-            dlBtn.download = "Edited_Video.mp4";
-            dlBtn.style.display = "block"; // Show button only when ready
-            
-            status.innerText = "SUCCESS! Click Download.";
-            if(wakeLock) wakeLock.release();
-            btn.disabled = false;
-        } catch (e) {
-            status.innerText = "Memory Error! File too large.";
-            btn.disabled = false;
-        }
+        await ffmpeg.run(
+            '-ss', '00:00:10', '-t', '10', // Takes 10 seconds of video
+            '-i', 'v.mp4', '-i', 'a.mp4',
+            '-filter_complex', complexFX,
+            '-map', '[v]', '-map', '1:a',
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28', 'final.mp4'
+        );
+
+        const data = ffmpeg.FS('readFile', 'final.mp4');
+        const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
+        const dl = document.getElementById('dlLink');
+        dl.href = url; dl.download = "Full_Anime_Edit.mp4";
+        dl.style.display = "block";
+        
+        status.innerText = "COMPLETE!";
+        btn.disabled = false;
     };
 </script>
-
 </body>
 </html>
