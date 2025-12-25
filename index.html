@@ -5,66 +5,95 @@
     <script src="https://cdn.jsdelivr.net/gh/gzuidhof/coi-serviceworker@latest/coi-serviceworker.min.js"></script>
     <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
     <style>
-        body { background: #000; color: #ff0055; font-family: monospace; text-align: center; padding: 20px; }
-        .box { border: 2px solid #ff0055; padding: 20px; border-radius: 15px; background: #0a0a0a; }
-        button { background: #ff0055; color: #fff; padding: 15px; width: 100%; border: none; font-weight: bold; margin-top: 10px; cursor: pointer; }
-        #count { font-size: 40px; margin: 10px 0; color: #fff; }
+        body { background: #000; color: #00ffcc; font-family: monospace; text-align: center; padding: 15px; }
+        .editor { border: 2px solid #00ffcc; border-radius: 15px; padding: 20px; background: #080808; }
+        #count { font-size: 45px; font-weight: bold; color: #fff; margin: 10px 0; }
+        button { background: #00ffcc; color: #000; padding: 18px; width: 100%; border: none; font-weight: bold; border-radius: 8px; cursor: pointer; }
+        .status-text { font-size: 12px; margin-top: 10px; color: #888; }
     </style>
 </head>
 <body>
 
-<div class="box">
-    <h2>YT SHORTS GEN</h2>
+<div class="editor">
+    <h2 style="color:#ff0055">PRO ANIME ENGINE</h2>
+    
     <input type="file" id="v" accept="video/mp4" style="width:100%"><br><br>
     <input type="file" id="a" accept="video/mp4" style="width:100%"><br>
-    
+
     <div id="count">0</div>
-    <p id="status">Ready for YouTube Edit</p>
-    
-    <button id="go">GENERATE 9:16 SHORT</button>
+    <div class="status-text" id="status">Ready to Render</div>
+
+    <button id="runBtn">START PRO EDIT</button>
 </div>
 
 <script>
     const { createFFmpeg, fetchFile } = FFmpeg;
     const ffmpeg = createFFmpeg({ log: true });
+    let wakeLock = null;
+
+    // --- ANTI-SLEEP LOGIC ---
+    async function startWakeLock() {
+        try {
+            if ('wakeLock' in navigator) {
+                wakeLock = await navigator.wakeLock.request('screen');
+                console.log("Wake Lock Active!");
+            }
+        } catch (err) { console.error(err); }
+    }
 
     ffmpeg.setLogger(({ message }) => {
         const frameMatch = message.match(/frame=\s*(\d+)/);
         if (frameMatch) document.getElementById('count').innerText = frameMatch[1];
     });
 
-    document.getElementById('go').onclick = async () => {
+    document.getElementById('runBtn').onclick = async () => {
         const status = document.getElementById('status');
+        const btn = document.getElementById('runBtn');
+        
+        btn.disabled = true;
+        await startWakeLock(); // Keeps screen on
+
         if (!ffmpeg.isLoaded()) {
-            status.innerText = "Starting Engine...";
+            status.innerText = "Waking Engine...";
             await ffmpeg.load();
         }
-        
-        status.innerText = "Uploading to RAM...";
-        ffmpeg.FS('writeFile', 'v.mp4', await fetchFile(document.getElementById('v').files[0]));
-        ffmpeg.FS('writeFile', 'a.mp4', await fetchFile(document.getElementById('a').files[0]));
 
-        status.innerText = "Cropping to 9:16 Vertical...";
-        
-        // This command crops the center and scales for YouTube Shorts
+        status.innerText = "Loading Files...";
+        ffmpeg.FS('writeFile', 'in.mp4', await fetchFile(document.getElementById('v').files[0]));
+        ffmpeg.FS('writeFile', 'sd.mp4', await fetchFile(document.getElementById('a').files[0]));
+
+        status.innerText = "Applying Pro Effects...";
+
+        // --- THE AESTHETIC FILTER ---
+        // scale=480:-1 (Performance)
+        // unsharp (Sharpness)
+        // eq=saturation=1.4 (Vibrant colors)
+        // zoompan (Cinematic slow zoom)
+        const filter = "[0:v]scale=480:-1,unsharp=5:5:1.0,eq=saturation=1.4,zoompan=z='min(zoom+0.001,1.2)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'[v]";
+
         await ffmpeg.run(
-            '-i', 'v.mp4', 
-            '-i', 'a.mp4',
-            '-t', '15',
-            '-filter_complex', 
-            "[0:v]scale=-1:1920,crop=1080:1920[v]", 
-            '-map', '[v]', '-map', '1:a', 
-            '-c:v', 'libx264', '-preset', 'ultrafast', 'short.mp4'
+            '-ss', '00:00:30', '-t', '10',
+            '-i', 'in.mp4', '-i', 'sd.mp4',
+            '-filter_complex', filter,
+            '-map', '[v]', '-map', '1:a',
+            '-c:v', 'libx264', '-preset', 'ultrafast', 'final.mp4'
         );
 
-        const data = ffmpeg.FS('readFile', 'short.mp4');
+        const data = ffmpeg.FS('readFile', 'final.mp4');
         const url = URL.createObjectURL(new Blob([data.buffer], {type: 'video/mp4'}));
-        const link = document.createElement('a');
-        link.href = url; link.download = "YT_Short.mp4"; link.innerText = "DOWNLOAD SHORT";
-        link.style.color = "#00ffcc";
-        document.body.appendChild(link);
-        status.innerText = "COMPLETED!";
+        const a = document.createElement('a');
+        a.href = url; a.download = "Pro_Anime_Edit.mp4";
+        a.style.display = "block"; a.innerText = "⬇️ DOWNLOAD EDIT ⬇️";
+        a.style.color = "#ff0055"; a.style.marginTop = "20px";
+        document.body.appendChild(a);
+
+        status.innerText = "DONE! Screen lock released.";
+        if (wakeLock) {
+            await wakeLock.release();
+            wakeLock = null;
+        }
+        btn.disabled = false;
     };
 </script>
 </body>
-</html>
+        </html>
