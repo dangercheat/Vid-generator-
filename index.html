@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TECNO LIGHT ENGINE</title>
+    <script src="https://cdn.jsdelivr.net/gh/gzuidhof/coi-serviceworker@latest/coi-serviceworker.min.js"></script>
+    <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
+    <style>
+        body { background: #111; color: #00ffcc; font-family: sans-serif; text-align: center; padding: 20px; }
+        .card { border: 2px solid #00ffcc; border-radius: 10px; padding: 20px; background: #000; }
+        .loading-spinner { border: 4px solid #333; border-top: 4px solid #00ffcc; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; display: none; margin: 10px auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        button { background: #00ffcc; color: #000; padding: 15px; width: 100%; border: none; font-weight: bold; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h3>TECNO FAST GEN</h3>
+    <p style="font-size: 10px; color: #888;">Note: MUST use HTTPS to load</p>
+    
+    <input type="file" id="v" accept="video/mp4" style="width: 100%; margin: 10px 0;">
+    <input type="file" id="a" accept="video/mp4,audio/mpeg" style="width: 100%; margin: 10px 0;">
+
+    <div id="spinner" class="loading-spinner"></div>
+    <div id="status">System Ready</div>
+    
+    <button id="go">GENERATE MP4</button>
+</div>
+
+<script>
+    const { createFFmpeg, fetchFile } = FFmpeg;
+    // We use a specific core version that is more stable on Android
+    const ffmpeg = createFFmpeg({ 
+        log: true,
+        corePath: 'https://unpkg.com/@ffmpeg/core@0.11.0/dist/ffmpeg-core.js' 
+    });
+
+    document.getElementById('go').onclick = async () => {
+        const v = document.getElementById('v').files[0];
+        const a = document.getElementById('a').files[0];
+        if(!v || !a) return alert("Upload files!");
+
+        const status = document.getElementById('status');
+        const spinner = document.getElementById('spinner');
+        spinner.style.display = "block";
+
+        if (!ffmpeg.isLoaded()) {
+            status.innerText = "Unlocking Engine... (Wait 15s)";
+            try {
+                await ffmpeg.load();
+            } catch (err) {
+                status.innerText = "SECURITY ERROR: You must host this on GitHub/Vercel (HTTPS)";
+                spinner.style.display = "none";
+                return;
+            }
+        }
+
+        status.innerText = "Processing MP4...";
+        ffmpeg.FS('writeFile', 'in.mp4', await fetchFile(v));
+        ffmpeg.FS('writeFile', 'snd.mp4', await fetchFile(a));
+
+        await ffmpeg.run('-ss', '00:01:00', '-t', '5', '-i', 'in.mp4', '-i', 'snd.mp4', '-filter_complex', '[0:v]scale=400:-1[v]', '-map', '[v]', '-map', '1:a', '-c:v', 'libx264', '-preset', 'ultrafast', 'out.mp4');
+
+        const data = ffmpeg.FS('readFile', 'out.mp4');
+        const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = "edit.mp4";
+        link.innerText = "CLICK TO DOWNLOAD";
+        document.body.appendChild(link);
+        
+        status.innerText = "FINISHED!";
+        spinner.style.display = "none";
+    };
+</script>
+</body>
+</html>
