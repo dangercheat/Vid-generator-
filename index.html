@@ -3,40 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Universal Video Editor</title>
+    <title>Secure Download Editor</title>
     <script src="https://cdn.jsdelivr.net/gh/gzuidhof/coi-serviceworker@latest/coi-serviceworker.min.js"></script>
     <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
     <style>
-        body { background: #000; color: #00ffcc; font-family: 'Segoe UI', sans-serif; text-align: center; padding: 20px; }
-        .main-box { border: 2px solid #00ffcc; border-radius: 20px; padding: 25px; background: #0a0a0a; max-width: 450px; margin: auto; }
-        .count-num { font-size: 55px; font-weight: 800; color: #fff; margin: 15px 0; }
-        input[type="file"] { width: 100%; margin: 10px 0; padding: 12px; background: #111; color: #fff; border: 1px solid #333; border-radius: 8px; }
-        button { width: 100%; padding: 20px; background: #00ffcc; color: #000; border: none; font-weight: bold; border-radius: 12px; cursor: pointer; font-size: 16px; }
-        #status { font-size: 12px; color: #888; margin-top: 15px; }
-        .progress-container { width: 100%; background: #222; height: 8px; border-radius: 4px; margin: 10px 0; overflow: hidden; }
-        #progress-fill { width: 0%; height: 100%; background: #00ffcc; transition: 0.3s; }
+        body { background: #000; color: #00ffcc; font-family: sans-serif; text-align: center; padding: 20px; }
+        .card { border: 2px solid #00ffcc; border-radius: 15px; padding: 25px; background: #0a0a0a; max-width: 400px; margin: auto; }
+        #count { font-size: 50px; font-weight: bold; margin: 10px 0; }
+        button { width: 100%; padding: 15px; background: #00ffcc; color: #000; border: none; font-weight: bold; border-radius: 10px; cursor: pointer; }
+        .download-btn { display: none; background: #ff0055; color: white; text-decoration: none; padding: 15px; border-radius: 10px; display: none; margin-top: 20px; font-weight: bold; }
+        .status { font-size: 12px; color: #888; margin-top: 10px; }
     </style>
 </head>
 <body>
 
-<div class="main-box">
-    <h2 style="margin-top:0;">UNIVERSAL_EDITOR</h2>
+<div class="card">
+    <h2>DOWNLOAD_FIX_V5</h2>
     
-    <label style="font-size: 10px; display:block; text-align:left;">UPLOAD VIDEO:</label>
-    <input type="file" id="videoFile" accept="video/*">
-    
-    <label style="font-size: 10px; display:block; text-align:left;">UPLOAD AUDIO/MUSIC:</label>
-    <input type="file" id="audioFile" accept="video/*,audio/*">
+    <input type="file" id="v" accept="video/*" style="width:100%; margin-bottom:10px;">
+    <input type="file" id="a" accept="video/*,audio/*" style="width:100%; margin-bottom:10px;">
 
-    <div class="count-num" id="frameDisplay">0</div>
-    <div style="font-size: 10px; margin-bottom: 10px;">PROGRESS: FRAMES RENDERED</div>
+    <div id="count">0</div>
+    <div id="status" class="status">Waiting for files...</div>
 
-    <div class="progress-container"><div id="progress-fill"></div></div>
+    <button id="startBtn">START EDIT</button>
 
-    <button id="startBtn">START GENERATING</button>
-    <p id="status">Waiting for files...</p>
-    
-    <a id="downloadLink" style="display:none; margin-top:20px; color:#ff0055; font-weight:bold; text-decoration:none; display:block;" href="#"></a>
+    <a id="downloadBtn" class="download-btn">DOWNLOAD MP4</a>
 </div>
 
 <script>
@@ -44,72 +36,68 @@
     const ffmpeg = createFFmpeg({ log: true });
     let wakeLock = null;
 
-    // Prevents TECNO sleep
-    async function requestWakeLock() {
+    async function stayAwake() {
         if ('wakeLock' in navigator) {
-            try { wakeLock = await navigator.wakeLock.request('screen'); } catch (err) {}
+            try { wakeLock = await navigator.wakeLock.request('screen'); } catch (e) {}
         }
     }
 
     ffmpeg.setLogger(({ message }) => {
         const frameMatch = message.match(/frame=\s*(\d+)/);
-        if (frameMatch) document.getElementById('frameDisplay').innerText = frameMatch[1];
+        if (frameMatch) document.getElementById('count').innerText = frameMatch[1];
     });
 
     document.getElementById('startBtn').onclick = async () => {
-        const v = document.getElementById('videoFile').files[0];
-        const a = document.getElementById('audioFile').files[0];
-        if(!v || !a) return alert("Please select both a video and an audio file!");
+        const vFile = document.getElementById('v').files[0];
+        const aFile = document.getElementById('a').files[0];
+        if(!vFile || !aFile) return alert("Select files first!");
 
-        await requestWakeLock();
+        await stayAwake();
         const btn = document.getElementById('startBtn');
+        const dlBtn = document.getElementById('downloadBtn');
         const status = document.getElementById('status');
+
         btn.disabled = true;
+        dlBtn.style.display = "none"; // Hide old button if re-running
 
         if (!ffmpeg.isLoaded()) {
-            status.innerText = "Loading Engine (Wasm)...";
+            status.innerText = "Loading Engine...";
             await ffmpeg.load();
         }
 
-        status.innerText = "Reading Files...";
-        ffmpeg.FS('writeFile', 'input_v.mp4', await fetchFile(v));
-        ffmpeg.FS('writeFile', 'input_a.mp4', await fetchFile(a));
+        status.innerText = "Processing Video Data...";
+        ffmpeg.FS('writeFile', 'vid.mp4', await fetchFile(vFile));
+        ffmpeg.FS('writeFile', 'aud.mp4', await fetchFile(aFile));
 
-        status.innerText = "Rendering Pro Edit...";
-
-        // Filter: Scale to Vertical, Sharpness, Contrast, and Shake
-        const complexFilter = "[0:v]scale=-1:1080,crop=608:1080,unsharp=5:5:1.0,eq=contrast=1.2:saturation=1.4,zoompan=z='min(zoom+0.001,1.1)':d=1:x='iw/2-(iw/zoom/2)+rand(-2,2)':y='ih/2-(ih/zoom/2)+rand(-2,2)'[v]";
+        status.innerText = "Rendering (DO NOT CLOSE)...";
 
         try {
+            // High-Speed Mobile Friendly Filter
             await ffmpeg.run(
-                '-i', 'input_v.mp4',
-                '-i', 'input_a.mp4',
-                '-t', '12', // 12 second length
-                '-filter_complex', complexFilter,
+                '-i', 'vid.mp4', '-i', 'aud.mp4',
+                '-t', '12',
+                '-filter_complex', "[0:v]scale=480:854,crop=480:854,eq=saturation=1.4[v]",
                 '-map', '[v]', '-map', '1:a',
                 '-c:v', 'libx264', '-preset', 'ultrafast', 'output.mp4'
             );
 
+            // FIXING THE DOWNLOAD ERROR:
             const data = ffmpeg.FS('readFile', 'output.mp4');
-            const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
-            const dl = document.getElementById('downloadLink');
-            dl.href = url;
-            dl.download = "Edited_Video.mp4";
-            dl.innerText = "⬇️ DOWNLOAD FINISHED VIDEO ⬇️";
-            dl.style.display = "block";
+            const blob = new Blob([data.buffer], { type: 'video/mp4' });
+            const url = URL.createObjectURL(blob);
             
-            status.innerText = "Render Complete!";
+            dlBtn.href = url;
+            dlBtn.download = "Edited_Video.mp4";
+            dlBtn.style.display = "block"; // Show button only when ready
+            
+            status.innerText = "SUCCESS! Click Download.";
             if(wakeLock) wakeLock.release();
             btn.disabled = false;
         } catch (e) {
-            status.innerText = "Error: File too large for RAM.";
+            status.innerText = "Memory Error! File too large.";
             btn.disabled = false;
         }
     };
-
-    ffmpeg.setProgress(({ ratio }) => {
-        document.getElementById('progress-fill').style.width = (ratio * 100) + "%";
-    });
 </script>
 
 </body>
